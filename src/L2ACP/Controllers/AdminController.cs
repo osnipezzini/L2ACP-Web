@@ -41,12 +41,12 @@ namespace L2ACP.Controllers
             _localizer = localizer;
         }
 
-        public async Task<IActionResult> Index()
+        public IActionResult Index()
         {
             if (!User.Identity.IsAuthenticated)
                 return RedirectToAction("Login", "Account");
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return RedirectToAction("Login", "Account");
 
             return View();
@@ -58,7 +58,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return RedirectToAction("Login", "Account");
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return RedirectToAction("Login", "Account");
 
             var playersData = await _requestService.GetAnalyticsPlayers() as GetAnalyticsPlayersResponse;
@@ -74,7 +74,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return RedirectToAction("Login", "Account");
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return RedirectToAction("Login", "Account");
 
             var getBuyList = await _requestService.GetBuyList() as GetBuyListResponse;
@@ -94,7 +94,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return RedirectToAction("Login", "Account");
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return RedirectToAction("Login", "Account");
 
             var allPlayers = await _requestService.GetAllPlayers() as GetAllPlayerNamesResponse;
@@ -103,24 +103,24 @@ namespace L2ACP.Controllers
         }
 
         [Route("serverManage")]
-        public async Task<IActionResult> ServerManage()
+        public IActionResult ServerManage()
         {
             if (!User.Identity.IsAuthenticated)
                 return RedirectToAction("Login", "Account");
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return RedirectToAction("Login", "Account");
 
             return PartialView("_ServerManagment");
         }
 
         [Route("liveMap")]
-        public async Task<IActionResult> LiveMap()
+        public IActionResult LiveMap()
         {
             if (!User.Identity.IsAuthenticated)
                 return RedirectToAction("Login", "Account");
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return RedirectToAction("Login", "Account");
 
             return PartialView("_LiveMap");
@@ -132,7 +132,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return RedirectToAction("Login", "Account");
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return RedirectToAction("Login", "Account");
 
             var response = await _requestService.GetAllOnlinePlayersForMap() as GetAllOnlinePlayersForMapResponse;
@@ -144,6 +144,8 @@ namespace L2ACP.Controllers
                 {
                     player.X = (int) Math.Round((double)(116 + (player.X + 107823) / 200));
                     player.Y = (int)Math.Round((double)(2580 + (player.Y - 255420) / 200));
+
+                    System.Diagnostics.Debug.WriteLine("X: " + player.X + ", Y: " + player.Y);
                 }
 
                 return new JsonResult(players);
@@ -159,7 +161,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return Content(_localizer["You need to be logged in"]);
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return Content(_localizer["Not enough access level"]);
 
             var response = await _requestService.GiveItem(model.Username, model.ItemId, model.ItemCount, model.Enchant);
@@ -178,7 +180,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return Content(_localizer["You need to be logged in"]);
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return Content(_localizer["Not enough access level"]);
 
             var text = Request.Form["annText"];
@@ -186,7 +188,7 @@ namespace L2ACP.Controllers
             var response = await _requestService.AnnounceTextAsync(text);
             if (response.ResponseCode == 200)
             {
-                return Content("ok:" + response.ResponseMessage);
+                return Content("ok:" + _localizer["Successfully announced!"]);
             }
             return Content(response.ResponseMessage);
         }
@@ -198,7 +200,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return Content(_localizer["You need to be logged in"]);
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return Content(_localizer["Not enough access level"]);
 
             var playerName = Request.Form["Username"];
@@ -207,9 +209,9 @@ namespace L2ACP.Controllers
             var response = await _requestService.GiveDonatePoints(playerName, donatePoints);
             if (response.ResponseCode == 200)
             {
-                return Content("ok:" + response.ResponseMessage);
+                return Content("ok:" + _localizer["Donate points given!"]);
             }
-            return Content(response.ResponseMessage);
+            return Content(_localizer["Invalid request!"]);
         }
 
         [Route("setplayerlevel")]
@@ -219,13 +221,23 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return Content(_localizer["You need to be logged in"]);
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return Content(_localizer["Not enough access level"]);
 
             var playerName = Request.Form["Username"];
             var level = int.Parse(Request.Form["Level"]);
 
             var response = await _requestService.SetPlayerLevel(playerName, level);
+            switch (response.ResponseCode)
+            {
+                case 200:
+                    return Content("ok:" + _localizer["Level set successfully!"]);
+                case 500:
+                    return Content(_localizer["Invalid request!"]);
+                case 502:
+                    return Content(_localizer[string.Format("You must specify level between 1 and {0}.", response.ResponseMessage)]);
+            }
+
             if (response.ResponseCode == 200)
             {
                 return Content("ok:" + response.ResponseMessage);
@@ -240,7 +252,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return Content(_localizer["You need to be logged in"]);
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return Content(_localizer["Not enough access level"]);
 
             if (!int.TryParse(Request.Form["restartseconds"], out int seconds))
@@ -249,9 +261,9 @@ namespace L2ACP.Controllers
             var response = await _requestService.RestartServer(seconds);
             if (response.ResponseCode == 200)
             {
-                return Content("ok:" + response.ResponseMessage);
+                return Content("ok:" + _localizer["Server is restarting..."]);
             }
-            return Content(response.ResponseMessage);
+            return Content(_localizer["Server is already restarting!"]);
         }
 
         [Route("setdonatelist")]
@@ -261,13 +273,13 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return Content(_localizer["You need to be logged in"]);
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return Content(_localizer["Not enough access level"]);
 
             var response = await _requestService.SetDonateList(items);
             if (response.ResponseCode == 200)
             {
-                return Content("ok:" + response.ResponseMessage);
+                return Content("ok:" + _localizer["Successfully changed the item list!"]);
             }
             return Content(response.ResponseMessage);
         }
@@ -279,7 +291,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return Content(_localizer["You need to be logged in"]);
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return Content(_localizer["Not enough access level"]);
 
             var npcId = int.Parse(Request.Form["NpcId"]);
@@ -289,7 +301,7 @@ namespace L2ACP.Controllers
             var response = await _requestService.SpawnNpc(npcId,x,y);
             if (response.ResponseCode == 200)
             {
-                return Content("ok:" + response.ResponseMessage);
+                return Content("ok:" + _localizer[string.Format("Successfully spawned {0}!",response.ResponseMessage)]);
             }
             return Content(response.ResponseMessage);
         }
@@ -301,7 +313,7 @@ namespace L2ACP.Controllers
             if (!User.Identity.IsAuthenticated)
                 return Content(_localizer["You need to be logged in"]);
 
-            if (HttpContext.GetAccountInfo()?.AccessLevel < 100)
+            if (!HttpContext.HasAdminAccess())
                 return Content(_localizer["Not enough access level"]);
 
             var punishId = int.Parse(Request.Form["PunishId"]);
@@ -309,11 +321,33 @@ namespace L2ACP.Controllers
             var time = int.Parse(Request.Form["Time"]);
 
             var response = await _requestService.Punish(punishId, playerName, time);
-            if (response.ResponseCode == 200)
+            switch (response.ResponseCode)
             {
-                return Content("ok:" + response.ResponseMessage);
+                case 200:
+                    return Content("ok:" + _localizer["Success"]);
+                case 201:
+                    return Content("ok:" + _localizer["Account banned."]);
+                case 202:
+                    return Content("ok:" + _localizer["Character banned."]);
+                case 203:
+                    return Content("ok:" + _localizer["Character chat banned."]);
+                case 204:
+                    return Content("ok:" + _localizer["Character jailed."]);
+                case 205:
+                    return Content("ok:" + _localizer["Account unbanned."]);
+                case 206:
+                    return Content("ok:" + _localizer["Character unbanned."]);
+                case 207:
+                    return Content("ok:" + _localizer["Chat ban has been lifted."]);
+                case 208:
+                    return Content("ok:" + _localizer["Character unjailed."]);
+                case 500:
+                    return Content(_localizer["Player isn't currently chat banned."]);
+                case 501:
+                    return Content(_localizer["Character wasn't online."]);
+                default:
+                    return Content(_localizer["Invalid request!"]);
             }
-            return Content(response.ResponseMessage);
         }
     }
 }

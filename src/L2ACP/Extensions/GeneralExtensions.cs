@@ -24,6 +24,7 @@ using L2ACP.Requests;
 using L2ACP.Responses;
 using L2ACP.Services;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 
@@ -31,13 +32,44 @@ namespace L2ACP.Extensions
 {
     public static class GeneralExtensions
     {
-        private const string ApiUrl = "http://localhost:8000/api";
         public static string ToL2Password(this string str)
         {
-            SHA1 shA1 = SHA1.Create();
-            byte[] bytes = new ASCIIEncoding().GetBytes(str);
-            str = Convert.ToBase64String(shA1.ComputeHash(bytes));
-            return str;
+            if (Startup.Configuration.GetValue<string>("TargetServerType") == "L2OFF")
+            {
+                if (Startup.Configuration.GetValue<string>("PasswordHashType") == "Default")
+                {
+                    return L2OffCrypto.EncryptLegacyL2Password(str);
+                }
+                else
+                {
+                    return L2OffCrypto.EncryptMD5(str);
+                }
+            }
+            else
+            {
+                SHA1 shA1 = SHA1.Create();
+                byte[] bytes = new ASCIIEncoding().GetBytes(str);
+                str = Convert.ToBase64String(shA1.ComputeHash(bytes));
+                return str;
+            }
+        }
+
+        public static string ByteArrayToString(byte[] byteArray)
+        {
+            System.Text.StringBuilder hex = new System.Text.StringBuilder(byteArray.Length * 2);
+            foreach (byte b in byteArray)
+                hex.AppendFormat("{0:X2}", b);
+            return hex.ToString();
+        }
+
+        public static string ToLegacyL2Password(this string str)
+        {
+            return L2OffCrypto.EncryptLegacyL2Password(str);
+        }
+
+        public static string ToMD5L2Password(this string str)
+        {
+            return L2OffCrypto.EncryptMD5(str);
         }
 
         public static string GetUsername(this HttpContext context)
@@ -51,9 +83,9 @@ namespace L2ACP.Extensions
 
         public static async Task<T> SendPostRequest<T>(this L2Request req) where T : L2Response
         {
-            var request = await new HttpClient().PostAsync(ApiUrl, new JsonContent(req));
+            var request = await new HttpClient().PostAsync(Startup.Configuration.GetValue<string>("ApiEndpoint"), new JsonContent(req));
 
-            var result = AesCrypto.DecryptRijndael(await request.Content.ReadAsStringAsync(), Constants.Salt);
+            var result = AesCrypto.DecryptRijndael(await request.Content.ReadAsStringAsync(), Startup.Configuration.GetValue<string>("CryptoSalt"));
 
             var responseObject = JsonConvert.DeserializeObject<T>(result);
             return responseObject;
@@ -62,6 +94,23 @@ namespace L2ACP.Extensions
         public static GetAccountInfoResponse GetAccountInfo(this HttpContext context)
         {
             return (GetAccountInfoResponse)context.Items["AccountInfo"];
+        }
+
+        public static string GetTargetServerType(this HttpContext context)
+        {
+            return Startup.Configuration.GetValue<string>("TargetServerType");
+        }
+
+        public static bool HasAdminAccess(this HttpContext context)
+        {
+            if (Startup.Configuration.GetValue<string>("TargetServerType") == "L2OFF")
+            {
+                return context.GetAccountInfo()?.AccessLevel > 0;
+            }
+            else
+            {
+                return context.GetAccountInfo()?.AccessLevel >= 100;
+            }
         }
 
         public static void InjectInfoToContext(this HttpContext context, GetAccountInfoResponse accountInfo)
